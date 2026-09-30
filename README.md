@@ -1,40 +1,115 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/pages/api-reference/create-next-app).
+# 🍽️ Sabor da Casa — Microfrontends com Next.js e Module Federation
 
-## Getting Started
+Projeto de estudo de arquitetura de microfrontends. O cliente escolhe pratos em um cardápio e acompanha o pedido em tempo real, e cada parte da tela é uma aplicação independente.
 
-First, run the development server:
+## Arquitetura
+
+O repositório tem três aplicações, todas em **Next.js 15 (Pages Router)** e integradas em **tempo de execução** com **Webpack Module Federation** (`@module-federation/nextjs-mf`).
+
+| Aplicação        | Pasta        | Porta | Papel                                                                                    |
+| ---------------- | ------------ | ----- | ---------------------------------------------------------------------------------------- |
+| Micro Cardápio   | `catalogo/`  | 3001  | Expõe o componente `Cardapio` (lista estática de pratos com botão "Adicionar ao pedido") |
+| Micro Pedido     | `carrinho/`  | 3002  | Expõe o componente `Pedidos` (lista os itens escolhidos)                                 |
+| Container (host) | `container/` | 3000  | Consome os dois micros com `React.lazy` + `Suspense` e monta o layout da página          |
+
+> Ajuste os nomes das pastas e a porta do container se forem diferentes no seu repositório.
+
+### Módulos expostos e consumidos
+
+- `catalogo` expõe `./Cardapio` e o container o importa como `catalogo/Cardapio`.
+- `carrinho` expõe `./Pedidos` e o container o importa como `carrinho/Pedidos`.
+- O container aponta para os micros pelos `remoteEntry.js`:
+  - `catalogo@http://localhost:3001/_next/static/chunks/remoteEntry.js`
+  - `carrinho@http://localhost:3002/_next/static/chunks/remoteEntry.js`
+
+## Como rodar
+
+Requisitos: Node.js e npm.
+
+Cada aplicação é independente, então instale e rode uma por vez, cada uma no seu terminal.
+
+### 1. Micro Cardápio (porta 3001)
 
 ```bash
+cd catalogo
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Abra http://localhost:3001 para testar o cardápio sozinho.
 
-You can start editing the page by modifying `pages/index.tsx`. The page auto-updates as you edit the file.
+### 2. Micro Pedido (porta 3002)
 
-[API routes](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) can be accessed on [http://localhost:3000/api/hello](http://localhost:3000/api/hello). This endpoint can be edited in `pages/api/hello.ts`.
+```bash
+cd carrinho
+npm install
+npm run dev
+```
 
-The `pages/api` directory is mapped to `/api/*`. Files in this directory are treated as [API routes](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) instead of React pages.
+Abra http://localhost:3002 para testar o pedido sozinho.
 
-This project uses [`next/font`](https://nextjs.org/docs/pages/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 3. Container (porta 3000)
 
-## Learn More
+Suba **por último**, com os dois micros já rodando:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+cd container
+npm install
+npm run dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn-pages-router) - an interactive Next.js tutorial.
+Abra http://localhost:3000 para ver a aplicação completa.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+> No Windows, o script `dev` usa `set NEXT_PRIVATE_LOCAL_WEBPACK=true && next dev`. Em Linux/macOS, troque `set` por `export` (ou use a variável antes do comando).
 
-## Deploy on Vercel
+## Como funciona a comunicação entre os micros
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Os micros **não se conhecem**. Eles conversam por **eventos globais do navegador** (`CustomEvent`), o que mantém os dois desacoplados.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/pages/building-your-application/deploying) for more details.
+1. **Cardápio (emissor):** ao clicar em "Adicionar ao pedido", dispara o evento `adicionarCarrinho` na `window`, levando o prato no campo `detail`:
+
+   ```js
+   window.dispatchEvent(new CustomEvent("adicionarCarrinho", { detail: item }));
+   ```
+
+2. **Pedido (receptor):** dentro de um `useEffect`, escuta o evento e adiciona o prato ao estado. O listener é removido ao desmontar o componente:
+
+   ```js
+   useEffect(() => {
+     const handler = (e) => setItens((prev) => [...prev, e.detail]);
+     window.addEventListener("adicionarCarrinho", handler);
+     return () => window.removeEventListener("adicionarCarrinho", handler);
+   }, []);
+   ```
+
+O objeto enviado em `detail` tem o formato `{ id, name, descricao }`.
+
+**Observação:** o receptor só recebe eventos disparados **depois** de montado. Por isso o container renderiza os dois micros juntos na mesma página.
+
+## Versões fixadas (importante)
+
+O `@module-federation/nextjs-mf` é sensível a versões. Por isso, nos `package.json`, `webpack`, `enhanced-resolve` e `nextjs-mf` estão **fixos**, sem `^`, e o bloco `overrides` garante uma única instância de cada. **Não atualize essas versões** sem testar, para evitar erros de build.
+
+## Estrutura de pastas
+
+```
+.
+├── catalogo/            # Micro Cardápio
+│   ├── src/components/Cardapio.jsx
+│   ├── src/pages/
+│   └── next.config.mjs  # expõe ./Cardapio
+├── carrinho/            # Micro Pedido
+│   ├── src/components/Pedidos.jsx
+│   ├── src/pages/
+│   └── next.config.mjs  # expõe ./Pedidos
+└── container/           # Container (host)
+    ├── src/pages/index.js
+    └── next.config.mjs  # consome os remotes
+```
+
+## Tecnologias
+
+- Next.js 15
+- React
+- Webpack Module Federation (`@module-federation/nextjs-mf`)
+- Tailwind CSS (estilização e responsividade)
