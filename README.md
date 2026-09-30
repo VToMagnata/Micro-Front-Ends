@@ -4,13 +4,13 @@ Projeto de estudo de arquitetura de microfrontends. O cliente escolhe pratos em 
 
 ## Arquitetura
 
-O repositório tem três aplicações, todas em **Next.js 15 (Pages Router)** e integradas em **tempo de execução** com **Webpack Module Federation** (`@module-federation/nextjs-mf`).
+O repositório tem três aplicações, todas em **Next.js 15** e integradas em **tempo de execução** com **Webpack Module Federation** (`@module-federation/nextjs-mf`).
 
 | Aplicação        | Pasta        | Porta | Papel                                                                                    |
 | ---------------- | ------------ | ----- | ---------------------------------------------------------------------------------------- |
 | Micro Cardápio   | `catalogo/`  | 3001  | Expõe o componente `Cardapio` (lista estática de pratos com botão "Adicionar ao pedido") |
 | Micro Pedido     | `carrinho/`  | 3002  | Expõe o componente `Pedidos` (lista os itens escolhidos)                                 |
-| Container (host) | `container/` | 3000  | Consome os dois micros com `React.lazy` + `Suspense` e monta o layout da página          |
+| Container (host) | `container/` | 3000  | Consome os dois micros                                                                   |
 
 > Ajuste os nomes das pastas e a porta do container se forem diferentes no seu repositório.
 
